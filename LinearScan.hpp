@@ -48,16 +48,16 @@ struct LiveInterval {
 
 class LinearScanRegisterAllocator {
 private:
-    int regNum;
-    std::set<LiveInterval*> active;
-    std::set<int> freeRegisters;
-    
     // Comparator for sorting active intervals by endpoint
     struct IntervalComparator {
         bool operator()(LiveInterval* a, LiveInterval* b) const {
             return a->endpoint < b->endpoint;
         }
     };
+    
+    int regNum;
+    std::set<LiveInterval*, IntervalComparator> active;
+    std::vector<int> freeRegisters;
 
     void expireOldIntervals(LiveInterval& i) {
         auto it = active.begin();
@@ -70,7 +70,7 @@ private:
             if (current->location) {
                 int regId = current->location->getId();
                 if (regId != -1) {
-                    freeRegisters.insert(regId);
+                    freeRegisters.push_back(regId);
                 }
             }
             it = active.erase(it);
@@ -103,7 +103,7 @@ public:
         this->regNum = regNum;
         // Initialize all registers as free, with smallest ID at the top
         for (int i = regNum - 1; i >= 0; i--) {
-            freeRegisters.insert(i);
+            freeRegisters.push_back(i);
         }
     }
     
@@ -112,16 +112,16 @@ public:
         freeRegisters.clear();
         // Reinitialize free registers
         for (int i = regNum - 1; i >= 0; i--) {
-            freeRegisters.insert(i);
+            freeRegisters.push_back(i);
         }
         
         for (auto& interval : intervalList) {
             expireOldIntervals(interval);
             
             if (!freeRegisters.empty()) {
-                // Allocate a free register
-                int regId = *freeRegisters.begin();
-                freeRegisters.erase(freeRegisters.begin());
+                // Allocate a free register (FILO - take from the back)
+                int regId = freeRegisters.back();
+                freeRegisters.pop_back();
                 interval.location = new Register(regId);
                 active.insert(&interval);
             } else {
